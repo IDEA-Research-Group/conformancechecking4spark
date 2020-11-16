@@ -1,0 +1,8 @@
+numpy==1.19.2
+pypandoc
+pyspark==3.0.1
+pm4py
+ortools
+setuptools
+pymongo==3.11.0
+hdfs==2.5.8
