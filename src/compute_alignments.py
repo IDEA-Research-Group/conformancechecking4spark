@@ -1,8 +1,7 @@
 import math
 from pm4py.algo.conformance.alignments import algorithm as alignments
-from src.results import DistributedAlignmentProblemResult
 
-class DistributedAlignmentProblem:
+class DistributedAlignmentConfiguration:
     """
     The following parameters must be defined:
     :param SparkContext
@@ -68,16 +67,16 @@ class DistributedAlignmentProblem:
         partitions = log_rdd.repartition(log_slices).cartesian(pm_rdd.repartition(pm_slices))
 
         return partitions\
-            .mapPartitions(lambda partition: DistributedAlignmentProblem._process_partition(partition, heuristic)) \
-            .reduceByKey(DistributedAlignmentProblem._reduce_partitions) \
+            .mapPartitions(lambda partition: DistributedAlignmentConfiguration._process_partition(partition, heuristic)) \
+            .reduceByKey(DistributedAlignmentConfiguration._reduce_partitions) \
 
 
     def apply(self):
         rdd = \
-            DistributedAlignmentProblem\
+            DistributedAlignmentConfiguration\
             ._apply(self._log_rdd, self._pm_rdd, self._log_slices, self._pm_slices, self._heuristic)
 
-        return DistributedAlignmentProblemResult(rdd)
+        return DistributedAlignmentProblem(rdd)
 
     # builder = Build()
 
@@ -129,3 +128,31 @@ class DistributedAlignmentProblem:
 
         def build(self):
             pass
+
+
+class DistributedAlignmentProblem:
+
+    def __init__(self, rdd):
+        self._rdd = rdd
+
+    def rdd(self):
+        return self._rdd
+
+    def save_local(self, local_path, force_same_directory=True):
+        DistributedAlignmentProblem._save_local(self._rdd, local_path, force_same_directory)
+
+    def print(self):
+        DistributedAlignmentProblem._print(self._rdd)
+
+    @staticmethod
+    def _save_local(rdd, local_path, force_same_directory):
+        if force_same_directory:
+            rdd.coalesce(1).saveAsTextFile(local_path)
+        else:
+            rdd.saveAsTextFile(local_path)
+
+    @staticmethod
+    def _print(rdd):
+        rdd.foreach(print)
+
+
