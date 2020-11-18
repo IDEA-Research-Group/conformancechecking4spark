@@ -1,6 +1,6 @@
 import math
 from pm4py.algo.conformance.alignments import algorithm as alignments
-
+from src.results import DistributedAlignmentProblemResult
 
 class DistributedAlignmentProblem:
     """
@@ -21,18 +21,21 @@ class DistributedAlignmentProblem:
         self._algorithm = algorithm
         self._heuristic = heuristic
 
-    def _process_partition(self, iterator):
+    @staticmethod
+    def _process_partition(iterator, heuristic):
+        print("procesando partition")
         partial_solutions = {}
         estimations = []
 
         for element in iterator:
+
             trace = element[0]
             model, initial_marking, final_marking = element[1]
-            estimation = self._heuristic(trace, model)
+            estimation = heuristic(trace, model)
             estimations.append((element[0], element[1], estimation))  # (trace, model, estimation)
 
         estimations.sort(key=(lambda x: x[2]))  # sort by estimation
-
+        print(len(estimations))
         for element in estimations:
             trace = element[0]
             model, initial_marking, final_marking = element[1]
@@ -41,31 +44,40 @@ class DistributedAlignmentProblem:
             prev_cost = math.inf
 
             if trace_name in partial_solutions.keys():
-                prev_cost = partial_solutions[trace_name]
+                prev_cost = partial_solutions[trace_name]['normalized_cost']
                 estimation = element[2]
-                if prev_cost <= estimation:  # if previous cost is better than estimation, brak
-                    break
+                if prev_cost <= estimation:  # if previous cost is better than estimation, skip this iteration
+                    continue
                 if prev_cost == 0:  # if prev_cost is 0, break
-                    break
+                    continue
 
             alignment = alignments.apply_trace(trace, model, initial_marking, final_marking)
             cost = int(alignment['cost'] / 10000)
 
             if cost < prev_cost:
-                partial_solutions[trace_name] = cost
+                partial_solutions[trace_name] = {'normalized_cost': cost, 'estimation': estimation, 'calculated_alignment': alignment}
 
         return [(k, v) for k, v in partial_solutions.items()]
 
-    def _reduce_partitions(self, ps1, ps2):
-        return min(ps1, ps2)
+    @staticmethod
+    def _reduce_partitions(ps1, ps2):
+        return min(ps1['normalized_cost'], ps2['normalized_cost'])
 
-    def run(self):
-        partitions = self._log_rdd.repartition(self._log_slices).cartesian(self._pm_rdd.repartition(self._pm_slices))
+    @staticmethod
+    def _apply(log_rdd, pm_rdd, log_slices, pm_slices, heuristic):
+        partitions = log_rdd.repartition(log_slices).cartesian(pm_rdd.repartition(pm_slices))
 
-        partitions.mapPartitions(self._process_partition) \
-            .reduceByKey(self._reduce_partitions) \
-            .show()
-        pass
+        return partitions\
+            .mapPartitions(lambda partition: DistributedAlignmentProblem._process_partition(partition, heuristic)) \
+            .reduceByKey(DistributedAlignmentProblem._reduce_partitions) \
+
+
+    def apply(self):
+        rdd = \
+            DistributedAlignmentProblem\
+            ._apply(self._log_rdd, self._pm_rdd, self._log_slices, self._pm_slices, self._heuristic)
+
+        return DistributedAlignmentProblemResult(rdd)
 
     # builder = Build()
 
