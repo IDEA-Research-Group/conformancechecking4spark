@@ -8,18 +8,14 @@ setuptools.setup(
     version="0.1.0",
     author="Alvaro Valencia-Parra",
     author_email="alvarovalenciavp@gmail.com",
-    description="A library for performing conformance checking on large event logs and complex PNML models by using "
-                "pm4py and Apache Spark.",
+    description="A library for performing conformance checking on large event logs and complex PNML models in a "
+                "distributed environment by using pm4py and Apache Spark.",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="http://www.idea.us.es/confcheckingbigdata/",
-    package_data={'': ['src/jobs/data']},
-    include_package_data=True,
-    packages=setuptools.find_packages(),
-    classifiers=[
-        "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
-    ],
+    url="https://github.com/IDEA-Research-Group/conformancechecking4spark",
+    download_url="https://github.com/IDEA-Research-Group/conformancechecking4spark/tarball/0.1",
+    classifiers=[],
+    keywords=["conformancecheking", "pm4py", "conformance checking", "process mining", "apache spark", "spark",
+              "distributed process mining"],
     python_requires='>=3.7',
 )

@@ -1,5 +1,5 @@
 
-from src.heuristics.utils import sum_dif_dict, get_repeated_log, get_repeated_net
+from conformancechecking4spark.heuristics.utils import sum_dif_dict, get_repeated_log, get_repeated_net
 
 
 def sum_of_differences(log, net):

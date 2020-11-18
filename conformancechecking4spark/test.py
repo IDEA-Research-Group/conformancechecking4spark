@@ -3,9 +3,9 @@ from pm4py.objects.log.importer.xes import importer as xes_importer
 from pm4py.objects.petri.importer import importer as pnml_importer
 import config
 import os
-from src.compute_alignments import DistributedAlignmentConfiguration
-from src.heuristics.algorithm import sum_of_differences
-from src.utils import get_partial_models
+from conformancechecking4spark.alignments import DistributedAlignmentConfiguration
+from conformancechecking4spark.heuristics.algorithm import sum_of_differences
+from conformancechecking4spark.utils import get_partial_models
 
 path_pms = os.path.join(config.ROOT_DIR, 'data/M2')
 
