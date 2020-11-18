@@ -1,6 +1,7 @@
 import math
 from pm4py.algo.conformance.alignments import algorithm as alignments
 
+
 class DistributedAlignmentConfiguration:
     """
     The following parameters must be defined:
@@ -10,7 +11,7 @@ class DistributedAlignmentConfiguration:
 
     def __init__(self, log_rdd, pm_rdd, log_slices, pm_slices, global_timeout=None, trace_timeout=None,
                  algorithm=None, heuristic=None):
-        #self._sc = sc
+        # self._sc = sc
         self._log_rdd = log_rdd
         self._pm_rdd = pm_rdd
         self._log_slices = log_slices
@@ -22,19 +23,22 @@ class DistributedAlignmentConfiguration:
 
     @staticmethod
     def _process_partition(iterator, heuristic):
-        print("procesando partition")
         partial_solutions = {}
         estimations = []
 
         for element in iterator:
-
             trace = element[0]
             model, initial_marking, final_marking = element[1]
-            estimation = heuristic(trace, model)
-            estimations.append((element[0], element[1], estimation))  # (trace, model, estimation)
 
-        estimations.sort(key=(lambda x: x[2]))  # sort by estimation
-        print(len(estimations))
+            if heuristic is None:
+                estimations.append((element[0], element[1]))  # (trace, model)
+            else:
+                estimation = heuristic(trace, model)
+                estimations.append((element[0], element[1], estimation))  # (trace, model, estimation)
+
+        if heuristic is not None:
+            estimations.sort(key=(lambda x: x[2]))  # sort by estimation
+
         for element in estimations:
             trace = element[0]
             model, initial_marking, final_marking = element[1]
@@ -44,17 +48,24 @@ class DistributedAlignmentConfiguration:
 
             if trace_name in partial_solutions.keys():
                 prev_cost = partial_solutions[trace_name]['normalized_cost']
-                estimation = element[2]
-                if prev_cost <= estimation:  # if previous cost is better than estimation, skip this iteration
-                    continue
-                if prev_cost == 0:  # if prev_cost is 0, break
+                if heuristic is not None:  # if heuristic is defined, check the estimation value
+                    estimation = element[2]
+                    if prev_cost <= estimation:  # if previous cost is better than estimation, skip this iteration
+                        continue
+                if prev_cost == 0:  # if prev_cost is 0, skip this iteration
                     continue
 
             alignment = alignments.apply_trace(trace, model, initial_marking, final_marking)
-            cost = int(alignment['cost'] / 10000)
+            normalized_cost = int(alignment['cost'] / 10000)
 
-            if cost < prev_cost:
-                partial_solutions[trace_name] = {'normalized_cost': cost, 'estimation': estimation, 'calculated_alignment': alignment}
+            if normalized_cost < prev_cost:
+                if heuristic is not None:
+                    partial_solutions[trace_name] = {'normalized_cost': normalized_cost,
+                                                     'estimation': estimation,
+                                                     'calculated_alignment': alignment}
+                else:
+                    partial_solutions[trace_name] = {'normalized_cost': normalized_cost,
+                                                     'calculated_alignment': alignment}
 
         return [(k, v) for k, v in partial_solutions.items()]
 
@@ -66,15 +77,14 @@ class DistributedAlignmentConfiguration:
     def _apply(log_rdd, pm_rdd, log_slices, pm_slices, heuristic):
         partitions = log_rdd.repartition(log_slices).cartesian(pm_rdd.repartition(pm_slices))
 
-        return partitions\
+        return partitions \
             .mapPartitions(lambda partition: DistributedAlignmentConfiguration._process_partition(partition, heuristic)) \
-            .reduceByKey(DistributedAlignmentConfiguration._reduce_partitions) \
-
+            .reduceByKey(DistributedAlignmentConfiguration._reduce_partitions)
 
     def apply(self):
         rdd = \
-            DistributedAlignmentConfiguration\
-            ._apply(self._log_rdd, self._pm_rdd, self._log_slices, self._pm_slices, self._heuristic)
+            DistributedAlignmentConfiguration \
+                ._apply(self._log_rdd, self._pm_rdd, self._log_slices, self._pm_slices, self._heuristic)
 
         return DistributedAlignmentProblem(rdd)
 
@@ -154,5 +164,3 @@ class DistributedAlignmentProblem:
     @staticmethod
     def _print(rdd):
         rdd.foreach(print)
-
-
