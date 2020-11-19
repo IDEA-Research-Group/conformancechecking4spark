@@ -15,13 +15,13 @@ sc = SparkContext(conf=conf)
 log = xes_importer.apply(os.path.join(config.ROOT_DIR, 'data/M2.xes'))
 net, initial_marking, final_marking = pnml_importer.apply(os.path.join(config.ROOT_DIR, 'data/M2_petri_pnml.pnml'))
 
-nets = [pnml_importer.apply(os.path.join(path_pms, f)) for f in get_partial_models(path_pms)]
+nets = get_partial_models(path_pms)
 
 log_rdd = sc.parallelize(log)
 # pm_rdd = sc.parallelize([(net, initial_marking, final_marking)])
 pm_rdd = sc.parallelize(nets)
 
-distr_alg = DistributedAlignmentConfiguration(log_rdd, pm_rdd, 10, 1, heuristic=sum_of_differences)
+distr_alg = DistributedAlignmentConfiguration(log_rdd, pm_rdd, 500, 1, heuristic=sum_of_differences)
 
 distr_alg.apply().save_local(os.path.join(config.ROOT_DIR, 'data/results'))
 
