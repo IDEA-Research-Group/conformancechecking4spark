@@ -14,7 +14,7 @@ class DistributedAlignmentConfiguration:
     """
 
     def __init__(self, log_rdd, pm_rdd, log_slices, pm_slices, global_timeout=None, trace_timeout=None,
-                 algorithm=None, heuristic=None):
+                 algorithm=None, heuristic=None, already_partitioned=False):
         # self._sc = sc
         self._log_rdd = log_rdd
         self._pm_rdd = pm_rdd
@@ -24,6 +24,7 @@ class DistributedAlignmentConfiguration:
         self._trace_timeout = trace_timeout
         self._algorithm = algorithm
         self._heuristic = heuristic
+        self._already_partitioned = already_partitioned
 
     @staticmethod
     def _process_partition(iterator, heuristic):
@@ -75,11 +76,17 @@ class DistributedAlignmentConfiguration:
 
     @staticmethod
     def _reduce_partitions(ps1, ps2):
-        return min(ps1['normalized_cost'], ps2['normalized_cost'])
+        if ps1['normalized_cost'] < ps2['normalized_cost']:
+            return ps1
+        else:
+            return ps2
 
     @staticmethod
-    def _apply(log_rdd, pm_rdd, log_slices, pm_slices, heuristic):
-        partitions = log_rdd.repartition(log_slices).cartesian(pm_rdd.repartition(pm_slices))
+    def _apply(log_rdd, pm_rdd, log_slices, pm_slices, heuristic, already_partitioned):
+        if already_partitioned:
+            partitions = log_rdd.cartesian(pm_rdd)
+        else:
+            partitions = log_rdd.repartition(log_slices).cartesian(pm_rdd.repartition(pm_slices))
 
         return partitions \
             .mapPartitions(lambda partition: DistributedAlignmentConfiguration._process_partition(partition, heuristic)) \
@@ -88,7 +95,8 @@ class DistributedAlignmentConfiguration:
     def apply(self):
         rdd = \
             DistributedAlignmentConfiguration \
-                ._apply(self._log_rdd, self._pm_rdd, self._log_slices, self._pm_slices, self._heuristic)
+                ._apply(self._log_rdd, self._pm_rdd, self._log_slices, self._pm_slices, self._heuristic,
+                        self._already_partitioned)
 
         return DistributedAlignmentProblem(rdd)
 
@@ -97,7 +105,7 @@ class DistributedAlignmentConfiguration:
         Attributes:
             _sc                 The SparkContext object employed for the building process. If SparkContext is given,
                                 the cluster configuration parameters are ignored.
-            _master             The master node of the cluster. Default: localhost[*]
+            _master             The master node of the cluster. Default: local[*]
             _app_name           The name of the Spark application. Default: DistributedAlignmentProblem
             _spark_config       The SparkConfig from which the cluster configuration is took. Default: Creates
                                 SparkConfig from thefault parameters.
@@ -109,7 +117,7 @@ class DistributedAlignmentConfiguration:
             _memory_executor    The memory for executor nodes. Default: 1g
             _memory_driver      The memory for the driver node. Default: 1g
 
-            Parameters associated to the input data:
+            Parameters associated to the input data: (at least one way of specifying log and pm must be used)
             _log_rdd            The RDD of event logs. If a RDD is given, the parameters associated to log input data
                                 are ignored
             _pm_rdd             The RDD of partial models. If a RDD is given, the parameters associated to pm input data
@@ -124,10 +132,10 @@ class DistributedAlignmentConfiguration:
             Configuration parameters:
             _log_slices         The number of slices for the RDD of event logs
             _pm_slices          The number of slices for the RDD of partial models
-            _global_timeout     The global timeout for each subproblem
-            _trace_timeout      The timeout for each trace
-            _algorithm          The name of the pm4py algorithm to employ
-            _heuristic          A function to be employed as a heuristic for estimating the alignments
+            _global_timeout     The global timeout for each subproblem. Default is None
+            _trace_timeout      The timeout for each trace. Default is None
+            _algorithm          The name of the pm4py algorithm to employ. Default is None
+            _heuristic          A function to be employed as a heuristic for estimating the alignments. Default is None
 
 
 
@@ -136,7 +144,7 @@ class DistributedAlignmentConfiguration:
 
         def __init__(self):
             self._sc = None
-            self._master = "localhost[*]"
+            self._master = "local[*]"
             self._app_name = "DistributedAlignmentProblem"
             self._spark_config = None
             self._executor_cores = "1"
@@ -157,73 +165,96 @@ class DistributedAlignmentConfiguration:
             self._trace_timeout = None
             self._algorithm = None
             self._heuristic = None
+            self._already_partitioned = False
             pass
 
         def set_spark_context(self, sc):
             self._sc = sc
+            return self
 
         def set_master(self, master):
             self._master = master
+            return self
 
         def set_app_name(self, app_name):
             self._app_name = app_name
+            return self
 
         def set_spark_config(self, spark_config):
             self._spark_config = spark_config
+            return self
 
         def set_executor_cores(self, executor_cores):
             self._executor_cores = executor_cores
+            return self
 
         def set_driver_cores(self, driver_cores):
             self._driver_cores = driver_cores
+            return self
 
         def set_executor_memory(self, executor_memory):
             self._executor_memory = executor_memory
+            return self
 
         def set_driver_memory(self, driver_memory):
             self._driver_memory = driver_memory
+            return self
 
         def set_log_rdd(self, log_rdd):
             self._log_rdd = log_rdd
+            return self
 
         def set_pm_rdd(self, pm_rdd):
             self._pm_rdd = pm_rdd
+            return self
 
         def set_log(self, log):
             self._log = log
+            return self
 
         def set_pms(self, pms):
             self._pms = pms
+            return self
 
         def set_pm(self, pm):
             self._pm = pm
+            return self
 
         def set_log_path(self, log_path):
             self._log_path = log_path
+            return self
 
         def set_pm_path(self, pm_path):
             self._pm_path = pm_path
+            return self
 
         def set_pms_directory(self, pms_directory):
             self._pms_directory_path = pms_directory
+            return self
 
         def set_log_slices(self, log_slices):
             self._log_slices = log_slices
+            return self
 
         def set_pm_slices(self, pm_slices):
             self._pm_slices = pm_slices
+            return self
 
         def set_global_timeout(self, global_timeout):
             self._global_timeout = global_timeout
+            return self
 
         def set_trace_timeout(self, trace_timeout):
             self._trace_timeout = trace_timeout
+            return self
 
         def set_algorithm(self, algorithm):
             self._algorithm = algorithm
+            return self
 
         def set_heuristic(self, heuristic):
             self._heuristic = heuristic
+            return self
 
         def _create_spark_config(self):
             self._spark_config = SparkConf() \
@@ -243,7 +274,9 @@ class DistributedAlignmentConfiguration:
         def _prepare_log_rdd(self):
             if self._log_rdd is None:
                 if self._log is not None:
-                    self._log_rdd = DistributedAlignmentConfiguration.Builder._create_rdd(self._sc, self._log)
+                    self._log_rdd = DistributedAlignmentConfiguration.Builder._create_rdd(self._sc, self._log,
+                                                                                          self._pm_slices)
+                    self._already_partitioned = True
                 elif self._log_path is not None:
                     self._log = xes_importer.apply(self._log_path)
                     self._prepare_log_rdd()
@@ -253,7 +286,9 @@ class DistributedAlignmentConfiguration:
         def _prepare_pm_rdd(self):
             if self._pm_rdd is None:
                 if self._pms is not None:
-                    self._pm_rdd = DistributedAlignmentConfiguration.Builder._create_rdd(self._sc, self._pms)
+                    self._pm_rdd = DistributedAlignmentConfiguration.Builder._create_rdd(self._sc, self._pms,
+                                                                                         self._pm_slices)
+                    self._already_partitioned = True
                 elif self._pm is not None:
                     self._pms = [self._pm]
                     self._prepare_pm_rdd()
@@ -262,6 +297,7 @@ class DistributedAlignmentConfiguration:
                     self._prepare_pm_rdd()
                 elif self._pms_directory_path is not None:
                     self._pms = get_partial_models(self._pms_directory_path)
+                    self._prepare_pm_rdd()
                 else:
                     raise ValueError("A path to a PNML file or a directory must be specified.")
 
@@ -270,8 +306,8 @@ class DistributedAlignmentConfiguration:
             return SparkContext(conf=spark_conf)
 
         @staticmethod
-        def _create_rdd(sc, to_distribute):
-            return sc.parallelize(to_distribute)
+        def _create_rdd(sc, to_distribute, slices):
+            return sc.parallelize(to_distribute, slices)
 
         def build(self):
             if any([self._log_slices is None, self._pm_slices is None]):
@@ -282,7 +318,7 @@ class DistributedAlignmentConfiguration:
             self._prepare_pm_rdd()
             return DistributedAlignmentConfiguration(self._log_rdd, self._pm_rdd, self._log_slices, self._pm_slices,
                                                      self._global_timeout, self._trace_timeout, self._algorithm,
-                                                     self._heuristic)
+                                                     self._heuristic, self._already_partitioned)
 
     builder = Builder()
 
