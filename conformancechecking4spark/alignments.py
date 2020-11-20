@@ -1,5 +1,5 @@
 import math
-from pm4py.algo.conformance.alignments import algorithm as alignments
+from pm4py.algo.conformance.alignments import algorithm as alignment_alg
 from pyspark import SparkContext, SparkConf
 from pm4py.objects.log.importer.xes import importer as xes_importer
 from pm4py.objects.petri.importer import importer as pnml_importer
@@ -27,7 +27,7 @@ class DistributedAlignmentConfiguration:
         self._already_partitioned = already_partitioned
 
     @staticmethod
-    def _process_partition(iterator, heuristic):
+    def _process_partition(iterator, heuristic=None, algorithm=None):
         partial_solutions = {}
         estimations = []
 
@@ -51,26 +51,25 @@ class DistributedAlignmentConfiguration:
             trace_name = trace.attributes['concept:name']
             prev_cost = math.inf
 
+            estimation = None
+            if heuristic is not None:  # if heuristic is defined, check the estimation value
+                estimation = element[2]
+
             if trace_name in partial_solutions.keys():
                 prev_cost = partial_solutions[trace_name]['normalized_cost']
-                if heuristic is not None:  # if heuristic is defined, check the estimation value
-                    estimation = element[2]
+                if estimation is not None:
                     if prev_cost <= estimation:  # if previous cost is better than estimation, skip this iteration
                         continue
                 if prev_cost == 0:  # if prev_cost is 0, skip this iteration
                     continue
 
-            alignment = alignments.apply_trace(trace, model, initial_marking, final_marking)
+            alignment = alignment_alg.apply_trace(trace, model, initial_marking, final_marking, parameters=algorithm)
             normalized_cost = int(alignment['cost'] / 10000)
 
             if normalized_cost < prev_cost:
+                partial_solutions[trace_name] = {'normalized_cost': normalized_cost, 'calculated_alignment': alignment}
                 if heuristic is not None:
-                    partial_solutions[trace_name] = {'normalized_cost': normalized_cost,
-                                                     'estimation': estimation,
-                                                     'calculated_alignment': alignment}
-                else:
-                    partial_solutions[trace_name] = {'normalized_cost': normalized_cost,
-                                                     'calculated_alignment': alignment}
+                    partial_solutions[trace_name]['estimation'] = estimation
 
         return [(k, v) for k, v in partial_solutions.items()]
 
@@ -82,21 +81,31 @@ class DistributedAlignmentConfiguration:
             return ps2
 
     @staticmethod
-    def _apply(log_rdd, pm_rdd, log_slices, pm_slices, heuristic, already_partitioned):
+    def _apply(log_rdd, pm_rdd, log_slices, pm_slices, heuristic, algorithm, already_partitioned):
         if already_partitioned:
             partitions = log_rdd.cartesian(pm_rdd)
         else:
             partitions = log_rdd.repartition(log_slices).cartesian(pm_rdd.repartition(pm_slices))
 
         return partitions \
-            .mapPartitions(lambda partition: DistributedAlignmentConfiguration._process_partition(partition, heuristic)) \
+            .mapPartitions(lambda partition: DistributedAlignmentConfiguration._process_partition(partition, heuristic,
+                                                                                                  algorithm)) \
             .reduceByKey(DistributedAlignmentConfiguration._reduce_partitions)
 
     def apply(self):
+        # Set timeout parameters if they were defined
+        if any([self._global_timeout is not None, self._trace_timeout is not None]):
+            if self._algorithm is None:
+                self._algorithm = {}
+            if self._trace_timeout is not None:
+                self._algorithm[alignment_alg.Parameters.PARAM_MAX_ALIGN_TIME_TRACE] = self._trace_timeout
+            if self._global_timeout is not None:
+                self._algorithm[alignment_alg.Parameters.PARAM_MAX_ALIGN_TIME] = self._global_timeout
+
         rdd = \
             DistributedAlignmentConfiguration \
-                ._apply(self._log_rdd, self._pm_rdd, self._log_slices, self._pm_slices, self._heuristic,
-                        self._already_partitioned)
+            ._apply(self._log_rdd, self._pm_rdd, self._log_slices, self._pm_slices, self._heuristic,
+                        self._algorithm, self._already_partitioned)
 
         return DistributedAlignmentProblem(rdd)
 

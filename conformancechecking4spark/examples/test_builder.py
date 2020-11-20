@@ -8,6 +8,7 @@ conf = DistributedAlignmentConfiguration.builder \
     .set_pms_directory(os.path.join(config.ROOT_DIR, 'data/M2')) \
     .set_log_slices(500) \
     .set_pm_slices(1) \
-    .set_heuristic(sum_of_differences).build()
+    .set_heuristic(sum_of_differences)\
+    .build()
 
 conf.apply().print()
