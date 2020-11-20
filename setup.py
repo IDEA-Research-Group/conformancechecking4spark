@@ -18,4 +18,5 @@ setuptools.setup(
     keywords=["conformancecheking", "pm4py", "conformance checking", "process mining", "apache spark", "spark",
               "distributed process mining"],
     python_requires='>=3.7',
+    packages=setuptools.find_packages()
 )
