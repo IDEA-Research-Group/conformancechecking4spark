@@ -118,10 +118,62 @@ Requirements: You need a cluster based on Apache Spark 3.0.1. Each node must hav
 installed. Also, Python 3.7 is required.
 
 First, package this project with the following command: `python setup.py bdist_egg` (note that for this purpose, the 
-python module `setuptools` is required).
+python module `setuptools` is required). It will produce a `.egg` file (let's call it conformancechecking4spark.egg).
 
+Secondly, you have to create a `spark_submit.py` file. This is the entrypoint from the point of view of you Spark 
+cluster. The only purpose is to create and solve the distributed alignment problem. Next, an example is provided, in 
+which the results are stored in HDFS:
 
+````python
+from conformancechecking4spark.alignments import DistributedAlignmentConfiguration
+from conformancechecking4spark.heuristics.algorithm import sum_of_differences
+from conformancechecking4spark import utils
+from pyspark import SparkContext, SparkConf
 
+hdfs_ip = "IP"
+hdfs_user = "USER"
+hdfs_result_path = "RESULT_PATH"
+
+utils.remove_hdfs_directory(hdfs_result_path, hdfs_ip, hdfs_user)
+
+conf = SparkConf().setAppName('pm4py_test')\
+    .set("spark.executor.memory", "4g")\
+    .set("spark.driver.memory", "4g")\
+    .set("spark.executor.cores", 4)\
+    .set("spark.driver.cores", 1)
+
+sc = SparkContext(conf=conf)
+
+dac = DistributedAlignmentConfiguration.builder \
+    .set_spark_context(sc) \
+    .set_log_path('/root/data/M2.xes') \
+    .set_pms_directory('/root/data/M2') \
+    .set_log_slices(500) \
+    .set_pm_slices(1) \
+    .set_heuristic(sum_of_differences) \
+    .build()
+
+dac.apply().rdd().saveAsTextFile("hdfs://{0}:8020{1}".format(hdfs_ip, hdfs_result_path))
+````
+
+_IMPORTANT_: 
+* It is mandatory that you specify the `SparkContext` object to the builder. Otherwise, it will create a default
+SparkContext and will set the master to `local[*]`. It might cause problems in your cluster.
+* In this moment, the paths to the log and partial models must be in the local filesystem of each node.
+
+In order to submit the application, you have to upload the following files to a path wich is visible to all the nodes of
+the cluster (`spark_submit.py` and `conformancechecking4spark.egg`).
+
+````
+spark-submit --master URL_MASTER  \
+	--deploy-mode cluster \
+	--conf spark.master.rest.enabled=true \
+	--conf spark.executor.uri=PATH/spark-3.0.1-bin-hadoop2.7.tgz \
+	--conf spark.pyspark.python=/usr/bin/python3.7 \
+	--py-files PATH/conformancechecking4spark.egg \
+	PATH/spark_submit.py
+````
+ 
 ## Known bugs and future work
 
 * Timeouts are not fully supported. This will be fixed in future versions. By now, you can set a timeout by using the 
