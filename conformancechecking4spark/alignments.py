@@ -284,7 +284,7 @@ class DistributedAlignmentConfiguration:
             if self._log_rdd is None:
                 if self._log is not None:
                     self._log_rdd = DistributedAlignmentConfiguration.Builder._create_rdd(self._sc, self._log,
-                                                                                          self._pm_slices)
+                                                                                          self._log_slices)
                     self._already_partitioned = True
                 elif self._log_path is not None:
                     self._log = xes_importer.apply(self._log_path)
