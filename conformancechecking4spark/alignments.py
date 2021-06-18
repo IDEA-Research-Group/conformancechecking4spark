@@ -117,6 +117,10 @@ class DistributedAlignmentConfiguration:
             Parameters associated to the input data: (at least one way of specifying log and pm must be used)
             _log_rdd            The RDD of event logs. If a RDD is given, the parameters associated to log input data
                                 are ignored
+            _log_df             DataFrame containing event logs. Each row must represent a single event. The case
+                                related to each event must be present.
+            _log_df_config      Dictionary indicating the location of the "case_id", "task_id", and "event_timestamp"
+                                columns
             _pm_rdd             The RDD of partial models. If a RDD is given, the parameters associated to pm input data
                                 are ignored
             _log                The pm4py XES object
@@ -140,6 +144,8 @@ class DistributedAlignmentConfiguration:
         def __init__(self):
             self._spark_session = None
             self._log_rdd = None
+            self._log_df = None
+            self._log_df_config = None
             self._pm_rdd = None
             self._log = None
             self._pm = None
@@ -163,6 +169,11 @@ class DistributedAlignmentConfiguration:
 
         def set_log_rdd(self, log_rdd):
             self._log_rdd = log_rdd
+            return self
+
+        def set_log_df(self, log_df, case_id="case:concept:name", task_id="concept:name", event_timestamp="time:timestamp"):
+            self._log_df = log_df
+            self._log_df_config = {"case_id": case_id, "task_id": task_id, "event_timestamp": event_timestamp}
             return self
 
         def set_pm_rdd(self, pm_rdd):
@@ -228,7 +239,11 @@ class DistributedAlignmentConfiguration:
 
         def _prepare_log_rdd(self):
             if self._log_rdd is None:
-                if self._log is not None:
+                if self._log_df is not None:
+                    self._log_rdd = log_rdd.format_df(self._log_df, case_id=self._log_df_config["case_id"],
+                                                      task_id=self._log_df_config["task_id"],
+                                                      event_timestamp=self._log_df_config["event_timestamp"])
+                elif self._log is not None:
                     self._log_rdd = DistributedAlignmentConfiguration.Builder._create_rdd(self._spark_session, self._log,
                                                                                           self._log_slices)
                     self._already_partitioned = True
