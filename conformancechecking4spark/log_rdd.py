@@ -1,5 +1,7 @@
 from conformancechecking4spark.log_parse_utils.from_xml import parse_xml_row
-
+from conformancechecking4spark.log_parse_utils.from_df_row import parse_row
+from pyspark.sql import DataFrame
+from pyspark.sql import functions as f
 
 def create_from_xes(spark_session, path):
     """
@@ -33,64 +35,7 @@ def create_from_csv():
 
 
 # Group by trace => format
-def format_csv_rdd():
-    pass
-
-
-
-
-
-
-
-# UTILS
-
-
-
-
-
-class LogDataFrameBuilder():
-
-
-    def __init__(self):
-        pass
-
-    def set_additional_event_attributes(self):
-        pass
-
-    def set_additional_trace_attributes(self):
-        pass
-
-    def from_xes(self):
-        pass
-
-    def from_csv(self):
-        pass
-
-    def from_df(self):
-        pass
-
-    def _build_from_xes(self):
-        pass
-
-    def _build_from_csv(self):
-        pass
-
-
-    def build(self):
-        if self._df is not None:
-            return self._df
-        elif self._xes is not None:
-            return
-
-
-class EventDataFrameBuilder():
-    """
-    Attributes:
-        _df                 A DataFrame object containing, at least
-    """
-
-
-    def __init__(self):
-        pass
-
+def format_df(data_frame: DataFrame, case_id="case:concept:name", task_id="concept:name", event_timestamp="time:timestamp"):
+    return data_frame.groupBy(f.col(case_id)).agg(f.collect_list(f.struct(task_id, event_timestamp)).alias("events"))\
+        .rdd.map(lambda r: parse_row(r, case_id=case_id, task_id=task_id, event_timestamp=event_timestamp))
 
