@@ -30,10 +30,6 @@ def format_xml_rdd(rdd):
     return rdd.map(lambda r: parse_xml_row(r))
 
 
-def create_from_csv():
-    pass
-
-
 # Group by trace => format
 def format_df(data_frame: DataFrame, case_id="case:concept:name", task_id="concept:name", event_timestamp="time:timestamp"):
     return data_frame.groupBy(f.col(case_id)).agg(f.collect_list(f.struct(task_id, event_timestamp)).alias("events"))\
