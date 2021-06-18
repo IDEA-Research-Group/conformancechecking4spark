@@ -1,10 +1,9 @@
 import math
 from pm4py.algo.conformance.alignments import algorithm as alignment_alg
-from pyspark import SparkContext, SparkConf
-from pm4py.objects.log.importer.xes import importer as xes_importer
+from pyspark.sql import SparkSession
 from pm4py.objects.petri.importer import importer as pnml_importer
 from conformancechecking4spark.utils import get_partial_models
-
+from conformancechecking4spark import log_rdd, pnml_rdd
 
 class DistributedAlignmentConfiguration:
     """
@@ -112,19 +111,8 @@ class DistributedAlignmentConfiguration:
     class Builder:
         """
         Attributes:
-            _sc                 The SparkContext object employed for the building process. If SparkContext is given,
-                                the cluster configuration parameters are ignored.
-            _master             The master node of the cluster. Default: local[*]
-            _app_name           The name of the Spark application. Default: DistributedAlignmentProblem
-            _spark_config       The SparkConfig from which the cluster configuration is took. Default: Creates
-                                SparkConfig from thefault parameters.
-
-            Explicit configuration parameters: if any of these is specified, the configuration of the final SparkContext
-            is modified:
-            _cores_executor     The number of cores for executor nodes. Default: 1
-            _cores_driver       The number of cores for the driver nodes. Default: 1
-            _memory_executor    The memory for executor nodes. Default: 1g
-            _memory_driver      The memory for the driver node. Default: 1g
+            _spark_session      The SparkSession object employed for the building process. It is mandatory if neither
+                                _log_rdd nor pm_rdd are specified.
 
             Parameters associated to the input data: (at least one way of specifying log and pm must be used)
             _log_rdd            The RDD of event logs. If a RDD is given, the parameters associated to log input data
@@ -136,7 +124,8 @@ class DistributedAlignmentConfiguration:
             _pms                The list of pm4py pnml objects
             _log_path           The path to the XES file
             _pm_path            The path to the pnml file
-            _pms_directory_path  The path to the directory where the pnml files are stored
+            _pnml_variant       Petri net variant. Parameter received by the pnml importer
+            _pnml_arguments     Petri net arguments. Parameter received by the pnml importer
 
             Configuration parameters:
             _log_slices         The number of slices for the RDD of event logs
@@ -146,20 +135,10 @@ class DistributedAlignmentConfiguration:
             _algorithm          The name of the pm4py algorithm to employ. Default is None
             _heuristic          A function to be employed as a heuristic for estimating the alignments. Default is None
 
-
-
-
         """
 
         def __init__(self):
-            self._sc = None
-            self._master = "local[*]"
-            self._app_name = "DistributedAlignmentProblem"
-            self._spark_config = None
-            self._executor_cores = "1"
-            self._driver_cores = "1"
-            self._executor_memory = "1g"
-            self._driver_memory = "1g"
+            self._spark_session = None
             self._log_rdd = None
             self._pm_rdd = None
             self._log = None
@@ -167,7 +146,8 @@ class DistributedAlignmentConfiguration:
             self._pms = None
             self._log_path = None
             self._pm_path = None
-            self._pms_directory_path = None
+            self._pnml_variant = None
+            self._pnml_parameters = None
             self._log_slices = None
             self._pm_slices = None
             self._global_timeout = None
@@ -177,36 +157,8 @@ class DistributedAlignmentConfiguration:
             self._already_partitioned = False
             pass
 
-        def set_spark_context(self, sc):
-            self._sc = sc
-            return self
-
-        def set_master(self, master):
-            self._master = master
-            return self
-
-        def set_app_name(self, app_name):
-            self._app_name = app_name
-            return self
-
-        def set_spark_config(self, spark_config):
-            self._spark_config = spark_config
-            return self
-
-        def set_executor_cores(self, executor_cores):
-            self._executor_cores = executor_cores
-            return self
-
-        def set_driver_cores(self, driver_cores):
-            self._driver_cores = driver_cores
-            return self
-
-        def set_executor_memory(self, executor_memory):
-            self._executor_memory = executor_memory
-            return self
-
-        def set_driver_memory(self, driver_memory):
-            self._driver_memory = driver_memory
+        def set_spark_session(self, spark_session):
+            self._spark_session = spark_session
             return self
 
         def set_log_rdd(self, log_rdd):
@@ -237,8 +189,12 @@ class DistributedAlignmentConfiguration:
             self._pm_path = pm_path
             return self
 
-        def set_pms_directory(self, pms_directory):
-            self._pms_directory_path = pms_directory
+        def set_pnml_variant(self, variant):
+            self._pnml_variant = variant
+            return self
+
+        def set_pnml_parameters(self, parameters):
+            self._pnml_parameters = parameters
             return self
 
         def set_log_slices(self, log_slices):
@@ -265,64 +221,49 @@ class DistributedAlignmentConfiguration:
             self._heuristic = heuristic
             return self
 
-        def _create_spark_config(self):
-            self._spark_config = SparkConf() \
-                .setAppName(self._app_name) \
-                .setMaster(self._master) \
-                .set("spark.executor.memory", self._executor_memory) \
-                .set("spark.driver.memory", self._driver_memory) \
-                .set("spark.executor.cores", self._executor_cores) \
-                .set("spark.driver.cores", self._driver_cores)
-
-        def _prepare_spark_context(self):
-            if self._sc is None:
-                if self._spark_config is None:
-                    self._create_spark_config()
-                self._sc = DistributedAlignmentConfiguration.Builder._create_sc(self._spark_config)
+        def _assert_spark_session(self):
+            if self._spark_session is None and (self._log_rdd is None or self._pm_rdd is None):
+                raise ValueError("Spark Session must be specified. You can create a default SparkSession from "
+                                 "conformancechecking4spark.utils.create_default_spark_session")
 
         def _prepare_log_rdd(self):
             if self._log_rdd is None:
                 if self._log is not None:
-                    self._log_rdd = DistributedAlignmentConfiguration.Builder._create_rdd(self._sc, self._log,
+                    self._log_rdd = DistributedAlignmentConfiguration.Builder._create_rdd(self._spark_session, self._log,
                                                                                           self._log_slices)
                     self._already_partitioned = True
                 elif self._log_path is not None:
-                    self._log = xes_importer.apply(self._log_path)
-                    self._prepare_log_rdd()
+                    self._log_rdd = log_rdd.create_from_xes(self._spark_session, self._log_path)
                 else:
                     raise ValueError("A path to a XES log file must be specified.")
 
         def _prepare_pm_rdd(self):
             if self._pm_rdd is None:
                 if self._pms is not None:
-                    self._pm_rdd = DistributedAlignmentConfiguration.Builder._create_rdd(self._sc, self._pms,
+                    self._pm_rdd = DistributedAlignmentConfiguration.Builder._create_rdd(self._spark_session, self._pms,
                                                                                          self._pm_slices)
                     self._already_partitioned = True
                 elif self._pm is not None:
                     self._pms = [self._pm]
                     self._prepare_pm_rdd()
                 elif self._pm_path is not None:
-                    self._pm = pnml_importer.apply(self._pm_path)
-                    self._prepare_pm_rdd()
-                elif self._pms_directory_path is not None:
-                    self._pms = get_partial_models(self._pms_directory_path)
-                    self._prepare_pm_rdd()
+                    self._pm_rdd = pnml_rdd.create_from_pnml(self._spark_session, self._pm_path,
+                                                         self._pnml_variant, self._pnml_parameters)
+                # elif self._pms_directory_path is not None:
+                #     self._pms = get_partial_models(self._pms_directory_path)
+                #     self._prepare_pm_rdd()
                 else:
                     raise ValueError("A path to a PNML file or a directory must be specified.")
 
         @staticmethod
-        def _create_sc(spark_conf):
-            return SparkContext(conf=spark_conf)
-
-        @staticmethod
-        def _create_rdd(sc, to_distribute, slices):
-            return sc.parallelize(to_distribute, slices)
+        def _create_rdd(spark_session: SparkSession, to_distribute, slices):
+            return spark_session.sparkContext.parallelize(to_distribute, slices)
 
         def build(self):
             if any([self._log_slices is None, self._pm_slices is None]):
                 raise ValueError("Log slices and pm slices must be specified.")
 
-            self._prepare_spark_context()
+            self._assert_spark_session()
             self._prepare_log_rdd()
             self._prepare_pm_rdd()
             return DistributedAlignmentConfiguration(self._log_rdd, self._pm_rdd, self._log_slices, self._pm_slices,
