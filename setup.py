@@ -1,7 +1,7 @@
 import setuptools
 
-with open("README.md", "r") as fh:
-    long_description = fh.read()
+#with open("README.md", "r") as fh:
+#    long_description = fh.read()
 
 setuptools.setup(
     name="conformancechecking4spark",
@@ -10,7 +10,6 @@ setuptools.setup(
     author_email="alvarovalenciavp@gmail.com",
     description="A library for performing conformance checking on large event logs and complex PNML models in a "
                 "distributed environment by using pm4py and Apache Spark.",
-    long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/IDEA-Research-Group/conformancechecking4spark",
     download_url="https://github.com/IDEA-Research-Group/conformancechecking4spark/tarball/0.1",
