@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="conformancechecking4spark",
-    version="0.2.0",
+    version="0.3.0",
     author="Alvaro Valencia-Parra",
     author_email="alvarovalenciavp@gmail.com",
     description="A library for performing conformance checking on large event logs and complex PNML models in a "
