@@ -1,14 +1,11 @@
 import math
 from pm4py.algo.conformance.alignments import algorithm as alignment_alg
-from pyspark.sql import SparkSession
-from pm4py.objects.petri.importer import importer as pnml_importer
-from conformancechecking4spark.utils import get_partial_models
+from pyspark.sql import SparkSession, Row
 from conformancechecking4spark import log_rdd, pnml_rdd
+
 
 class DistributedAlignmentConfiguration:
     """
-    The following parameters must be defined:
-    :param SparkContext
     
     """
 
@@ -302,6 +299,9 @@ class DistributedAlignmentProblem:
     def print(self):
         DistributedAlignmentProblem._print(self._rdd)
 
+    def df(self):
+        return DistributedAlignmentProblem._df(self._rdd)
+
     @staticmethod
     def _save_local(rdd, local_path, force_same_directory):
         if force_same_directory:
@@ -312,3 +312,15 @@ class DistributedAlignmentProblem:
     @staticmethod
     def _print(rdd):
         rdd.foreach(print)
+
+    @staticmethod
+    def _df(rdd):
+        return rdd.map(lambda t: Row(case_id=t[0],
+                              cost=t[-1]["calculated_alignment"]["cost"],
+                              normalized_cost=t[-1]["normalized_cost"],
+                              visited_states=t[-1]["calculated_alignment"]["visited_states"],
+                              queued_states=t[-1]["calculated_alignment"]["queued_states"],
+                              traversed_arcs=t[-1]["calculated_alignment"]["traversed_arcs"],
+                              lp_solved=t[-1]["calculated_alignment"]["lp_solved"],
+                              alignment=str(t[-1]["calculated_alignment"]["alignment"]))).toDF()
+
